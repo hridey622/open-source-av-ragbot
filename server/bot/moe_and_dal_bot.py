@@ -1,5 +1,6 @@
 import sys
 import asyncio
+import os
 from loguru import logger
 
 from pipecat.pipeline.pipeline import Pipeline
@@ -65,11 +66,19 @@ async def run_bot(
     - RTVI event handling
     """
 
-    # spawn services first (happens on modaltunnelmanager init)
-    sglang_tunnel_manager = ModalTunnelManager(
-        app_name="sglang-server",
-        cls_name="SGLangServer",
-    )
+    llm_base_url = os.getenv("RAGBOT_LLM_BASE_URL")
+    stt_ws_url = os.getenv("RAGBOT_STT_WS_URL")
+    tts_ws_url = os.getenv("RAGBOT_TTS_WS_URL")
+    tts_moe_ws_url = os.getenv("RAGBOT_TTS_MOE_WS_URL")
+    tts_dal_ws_url = os.getenv("RAGBOT_TTS_DAL_WS_URL")
+
+    sglang_tunnel_manager = None
+    if not llm_base_url:
+        # Spawn service via Modal only when a self-hosted endpoint is not provided.
+        sglang_tunnel_manager = ModalTunnelManager(
+            app_name="sglang-server",
+            cls_name="SGLangServer",
+        )
 
     # get_llm_service_task = asyncio.create_task(
     #     ModalOpenAILLMService.from_tunnel_manager(
@@ -86,6 +95,7 @@ async def run_bot(
     llm = ModalOpenAILLMService(
         model="Qwen/Qwen3-4B-Instruct-2507",
         modal_tunnel_manager=sglang_tunnel_manager,
+        base_url=llm_base_url,
         params=OpenAILLMService.InputParams(
             extra={
                 "stream": True,
@@ -93,24 +103,33 @@ async def run_bot(
         ),
     )
 
-    parakeet_stt_tunnel_manager=ModalTunnelManager(
-        app_name="parakeet-transcription",
-        cls_name="Transcriber",
-    )
+    parakeet_stt_tunnel_manager = None
+    if not stt_ws_url:
+        parakeet_stt_tunnel_manager = ModalTunnelManager(
+            app_name="parakeet-transcription",
+            cls_name="Transcriber",
+        )
+
     if enable_moe_and_dal:
-        kokoro_tts_tunnel_manager_moe = ModalTunnelManager(
-            app_name="kokoro-tts",
-            cls_name="KokoroTTS",
-        )
-        kokoro_tts_tunnel_manager_dal = ModalTunnelManager(
-            app_name="kokoro-tts",
-            cls_name="KokoroTTS",
-        )
+        kokoro_tts_tunnel_manager_moe = None
+        kokoro_tts_tunnel_manager_dal = None
+        if not tts_moe_ws_url:
+            kokoro_tts_tunnel_manager_moe = ModalTunnelManager(
+                app_name="kokoro-tts",
+                cls_name="KokoroTTS",
+            )
+        if not tts_dal_ws_url:
+            kokoro_tts_tunnel_manager_dal = ModalTunnelManager(
+                app_name="kokoro-tts",
+                cls_name="KokoroTTS",
+            )
     else:
-        kokoro_tts_tunnel_manager = ModalTunnelManager(
-            app_name="kokoro-tts",
-            cls_name="KokoroTTS",
-        )
+        kokoro_tts_tunnel_manager = None
+        if not tts_ws_url:
+            kokoro_tts_tunnel_manager = ModalTunnelManager(
+                app_name="kokoro-tts",
+                cls_name="KokoroTTS",
+            )
 
     transport_params = TransportParams(
         audio_in_enabled=True,
@@ -137,6 +156,7 @@ async def run_bot(
 
     stt = ModalParakeetSegmentedSTTService(
         modal_tunnel_manager=parakeet_stt_tunnel_manager,
+        websocket_url=stt_ws_url,
     )
 
     modal_rag = ModalRag(chroma_db=chroma_db, similarity_top_k=3, num_adjacent_nodes=2)
@@ -146,12 +166,14 @@ async def run_bot(
         ta = MoeDalBotAnimation()
         moe_tts = ModalKokoroTTSService(
             modal_tunnel_manager=kokoro_tts_tunnel_manager_moe,
+            websocket_url=tts_moe_ws_url,
             speaker="moe",
             voice="am_puck",
             speed=1.3,
         )
         dal_tts = ModalKokoroTTSService(
             modal_tunnel_manager=kokoro_tts_tunnel_manager_dal,
+            websocket_url=tts_dal_ws_url,
             speaker="dal",
             voice="am_fenrir",
             speed=1.5,
@@ -160,6 +182,7 @@ async def run_bot(
     else:
         tts = ModalKokoroTTSService(
             modal_tunnel_manager=kokoro_tts_tunnel_manager,
+            websocket_url=tts_ws_url,
             voice="am_puck",
             speed=1.35,
         )
