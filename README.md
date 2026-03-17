@@ -80,6 +80,37 @@ modal deploy -m server.tts.kokoro_tts
 modal deploy -m app
 ```
 
+### Use your own GPU services (instead of Modal-hosted inference)
+
+If you want to run inference on your own GPU (for example an NVIDIA L40S), you can point the bot to self-hosted endpoints and skip deploying the Modal STT/TTS/LLM services.
+
+Set these environment variables before deploying `app`:
+
+```bash
+# Required for self-hosted LLM (OpenAI-compatible API)
+export RAGBOT_LLM_BASE_URL=http://<your-host>:8092/v1
+
+# Required for self-hosted STT websocket service
+export RAGBOT_STT_WS_URL=ws://<your-host>:<stt-port>/ws
+
+# Required for self-hosted single-speaker TTS websocket service
+export RAGBOT_TTS_WS_URL=ws://<your-host>:<tts-port>/ws
+
+# Optional (only if Moe + Dal dual speaker mode is enabled)
+export RAGBOT_TTS_MOE_WS_URL=ws://<your-host>:<tts-port>/ws
+export RAGBOT_TTS_DAL_WS_URL=ws://<your-host>:<tts-port>/ws
+```
+
+Behavior:
+- If a URL variable is set, the bot uses that self-hosted endpoint.
+- If a URL variable is not set, it falls back to spawning the corresponding Modal service.
+
+With all three primary variables set (`RAGBOT_LLM_BASE_URL`, `RAGBOT_STT_WS_URL`, `RAGBOT_TTS_WS_URL`), you only need to deploy:
+
+```bash
+modal deploy -m app
+```
+
 ### Warmup Snapshots
 We can speed up the cold start time of our bot (this is more important) and our Parakeet and LLM service (if using SGLang) using snapshots. However this leads to extra start up time for the first few containers when the apps are (re-)deployed. To warmup snapshots, you can run these files as Python scripts.
 

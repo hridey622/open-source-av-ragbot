@@ -36,6 +36,8 @@ class ModalOpenAILLMService(OpenAILLMService):
         
         self.modal_tunnel_manager = modal_tunnel_manager
         self.base_url = base_url
+        self._connect_client_task = None
+
         if self.modal_tunnel_manager:
             logger.info(f"Using Modal Tunnels")
         if self.base_url:
@@ -106,7 +108,7 @@ class ModalOpenAILLMService(OpenAILLMService):
     @traced_llm
     async def _process_context(self, context: OpenAILLMContext):
 
-        if not self._connect_client_task.done():
+        if self._connect_client_task and not self._connect_client_task.done():
             await self.push_frame(TTSSpeakFrame("My apologies, I'm still setting up a few things. I'll respond as soon as I'm ready."))
             return
 
